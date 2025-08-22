@@ -1,0 +1,12 @@
+config BR2_PACKAGE_SRT
+	bool "srt"
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  open source video transport protocol that enables 
+	  the delivery of high-quality and secure, low-latency 
+	  video across the public Internet. 
+
+	  https://github.com/Haivision/srt
+
+comment "SRT needs a toolchain with thread support"
+	depends on !BR2_TOOLCHAIN_HAS_THREADS

@@ -390,6 +390,11 @@ else
 FFMPEG_CONF_OPTS += --disable-libxml2
 endif
 
+ifeq ($(BR2_PACKAGE_SRT),y)
+FFMPEG_CONF_OPTS += --enable-libsrt
+FFMPEG_DEPENDENCIES += srt
+endif
+
 # ffmpeg freetype support require fenv.h which is only
 # available/working on glibc.
 # The microblaze variant doesn't provide the needed exceptions
