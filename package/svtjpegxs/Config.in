@@ -1,0 +1,13 @@
+config BR2_PACKAGE_SVTJPEGXS
+	bool "svtjpegxs"
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  JPEG XS is an image and video codec that offers visually
+	  and mathematically lossless quality. It is a special-purpose 
+	  codec that is specifically designed to allow for low-complexity 
+	  and low-latency implementations.
+
+	  https://github.com/OpenVisualCloud/SVT-JPEG-XS
+
+comment "SvtJpegXS needs a toolchain with thread support"
+	depends on !BR2_TOOLCHAIN_HAS_THREADS
