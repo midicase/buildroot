@@ -1,0 +1,51 @@
+diff -ruN ffmpeg-6.1.2.orig/libavcodec/libsvtjpegxsdec.c ffmpeg-6.1.2/libavcodec/libsvtjpegxsdec.c
+--- ffmpeg-6.1.2.orig/libavcodec/libsvtjpegxsdec.c	2025-12-03 05:14:23.329430644 -0500
++++ ffmpeg-6.1.2/libavcodec/libsvtjpegxsdec.c	2025-12-03 05:17:38.354080410 -0500
+@@ -88,6 +88,12 @@
+     svt_jpeg_xs_frame_t dec_output;
+     uint32_t pixel_size;
+ 
++    if ((avpkt->size > 30) && avpkt->data[4] == 0x6a && avpkt->data[5] == 0x78 && avpkt->data[6] == 0x65 && avpkt->data[7] == 0x73)
++    {
++        avpkt->size = avpkt->size - 30;
++        memmove(avpkt->data, avpkt->data+30, avpkt->size);
++    }
++
+     if (!svt_dec->decoder_initialized) {
+         err = svt_jpeg_xs_decoder_get_single_frame_size(avpkt->data, avpkt->size, NULL, &svt_dec->frame_size, 1/*quick search*/);
+         if (err) {
+diff -ruN ffmpeg-6.1.2.orig/libavformat/mpegts.c ffmpeg-6.1.2/libavformat/mpegts.c
+--- ffmpeg-6.1.2.orig/libavformat/mpegts.c	2024-08-01 19:22:54.000000000 -0400
++++ ffmpeg-6.1.2/libavformat/mpegts.c	2025-12-03 05:20:48.085631122 -0500
+@@ -811,6 +811,7 @@
+     { 0x1c, AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AAC        },
+     { 0x20, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264       },
+     { 0x21, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_JPEG2000   },
++    { 0x32, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_JPEGXS     },
+     { 0x24, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_HEVC       },
+     { 0x42, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_CAVS       },
+     { 0xd1, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_DIRAC      },
+diff -ruN ffmpeg-6.1.2.orig/libavformat/mpegtsenc.c ffmpeg-6.1.2/libavformat/mpegtsenc.c
+--- ffmpeg-6.1.2.orig/libavformat/mpegtsenc.c	2024-08-01 19:22:48.000000000 -0400
++++ ffmpeg-6.1.2/libavformat/mpegtsenc.c	2025-12-03 05:21:48.225756610 -0500
+@@ -437,6 +437,9 @@
+             stream_type = STREAM_TYPE_PRIVATE_DATA;
+         }
+         break;
++    case AV_CODEC_ID_JPEGXS:
++        stream_type = STREAM_TYPE_VIDEO_JPEGXS;
++        break;
+     default:
+         av_log_once(s, AV_LOG_WARNING, AV_LOG_DEBUG, &ts_st->data_st_warning,
+                     "Stream %d, codec %s, is muxed as a private data stream "
+diff -ruN ffmpeg-6.1.2.orig/libavformat/mpegts.h ffmpeg-6.1.2/libavformat/mpegts.h
+--- ffmpeg-6.1.2.orig/libavformat/mpegts.h	2024-08-01 19:22:48.000000000 -0400
++++ ffmpeg-6.1.2/libavformat/mpegts.h	2025-12-03 05:21:12.903095562 -0500
+@@ -128,6 +128,7 @@
+ #define STREAM_TYPE_METADATA        0x15
+ #define STREAM_TYPE_VIDEO_H264      0x1b
+ #define STREAM_TYPE_VIDEO_HEVC      0x24
++#define STREAM_TYPE_VIDEO_JPEGXS    0x32
+ #define STREAM_TYPE_VIDEO_CAVS      0x42
+ #define STREAM_TYPE_VIDEO_AVS2      0xd2
+ #define STREAM_TYPE_VIDEO_AVS3      0xd4
