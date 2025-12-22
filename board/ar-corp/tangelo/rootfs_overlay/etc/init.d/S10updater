@@ -1,0 +1,81 @@
+#!/bin/sh
+
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin"
+
+# finds and runs update file located in $UPDATEFOLD
+
+UPDATEFOLD=/var/www/uploads
+TEMPLOGFILE=${UPDATEFOLD}/../.temp.log
+LOGFILE=${UPDATEFOLD}/update.log
+FAILFILE=${UPDATEFOLD}/error.log
+
+ROOTFS1=/dev/mmcblk0p2
+ROOTFS2=/dev/mmcblk0p3
+
+if [ -f /etc/env.conf ]; then
+	source /etc/env.conf
+fi
+
+
+# mount both rootfs and copy the logfile to each since we don't know which is current or next
+copy_log() {
+	curr_boot=$(rdev | awk '{print $1}')
+	local MNT=$(mktemp -d)
+	if [ "$curr_boot" == "${ROOTFS1}" ]; then
+		mount $ROOTFS2 $MNT 2>/dev/null
+	elif [ "$curr_boot" == "${ROOTFS2}" ]; then
+		mount $ROOTFS1 $MNT 2>/dev/null
+	fi
+	if [ $? -eq 0 ]; then
+		cp ${TEMPLOGFILE} $MNT/${1}
+		umount $MNT
+	fi
+	rm ${TEMPLOGFILE}
+}
+
+
+start() {
+	if [ -n "$PRODUCT" ]; then
+		UPDATE=$(find ${UPDATEFOLD} -iname "${PRODUCT}_update*")
+ 	else
+		UPDATE=$(find ${UPDATEFOLD} -name "*_update*")
+	fi
+	if [ -n "$UPDATE" ]; then
+		echo "Performing update."
+		rm -f ${LOGFILE} ${TEMPLOGFILE} ${FAILFILE}
+		echo "Firmware: $(basename ${UPDATE})" > ${TEMPLOGFILE}
+		set -o pipefail
+		sh "${UPDATE}" 2>&1 | tee -a ${TEMPLOGFILE}
+		if [ $? -eq 0 ]; then 
+			find ${UPDATEFOLD} -type f -exec rm {} \;
+			echo "Success" >> ${TEMPLOGFILE}
+			copy_log ${LOGFILE}
+		else
+			find ${UPDATEFOLD} -type f -exec rm {} \;
+			echo "Failure" >> ${TEMPLOGFILE}
+			copy_log ${FAILFILE}
+		fi
+		set +o pipefail
+		echo "OK"
+		sync
+		/sbin/reboot -f
+	fi
+		
+}
+
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	;;
+  reset)
+	;;
+  *)
+	echo "Usage: $0 start"
+	exit 1
+esac
+
+exit $?
+
