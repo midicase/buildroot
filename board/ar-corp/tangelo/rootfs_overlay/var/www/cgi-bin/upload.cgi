@@ -25,7 +25,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 	done
 	
 	# clear the directory
-	rm -r ${UPLOAD_FOLD}/*
+	rm -rf ${UPLOAD_FOLD}/*
 	
 	# do the extract
 	7za x -p$(echo -n tangelo | sha256sum  | awk '{print $1}') /tmp/firmware.tmp -o${UPLOAD_FOLD} 
