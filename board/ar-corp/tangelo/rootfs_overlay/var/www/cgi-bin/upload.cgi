@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 UPLOAD_FOLD=/var/www/uploads
 

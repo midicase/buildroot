@@ -1,2 +1,7 @@
 # <name>                <type>  <mode>  <uid>   <gid>   <major> <minor> <start> <inc>   <count>
+/var/www                   d   755 0   0   -   -   -   -   -
+/var/www/cgi-bin           d   755 0   0   -   -   -   -   -
+/var/www/cgi-bin/upload.cgi    f   755 0   0   -   -   -   -   -
+/var/www/cgi-bin/reboot.cgi    f   755 0   0   -   -   -   -   -
+/var/www/cgi-bin/version.cgi   f   755 0   0   -   -   -   -   -
 /var/www/uploads           d   755 33  33  -   -   -   -   -
