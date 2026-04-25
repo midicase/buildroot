@@ -65,14 +65,6 @@ else
 	popd
 fi
 
-if [ ! -d ${BUILD_DIR}/tangelo ]; then
-    git clone -b main --single-branch git@github.com:SomaliaJamall/tangelo.git ${BUILD_DIR}/tangelo 
-else
-	pushd ${BUILD_DIR}/tangelo
-	git pull
-	popd
-fi
-
 pushd ${BUILD_DIR}/te0820/apps/system
 
 libtoolize --automake
@@ -97,9 +89,7 @@ automake --add-missing -cf --foreign
 make -j$((`nproc`+1))
 install -D -m 0755 tangelo ${TARGET_DIR}/usr/sbin/tangelo
 
-popd
-
-pushd ${BUILD_DIR}/tangelo
+pushd web_root
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -109,4 +99,8 @@ npm run build
 cp -a dist/* ${TARGET_DIR}/var/www/
 
 popd
+popd
+
+exit
+
 
