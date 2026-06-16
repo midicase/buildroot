@@ -4,6 +4,7 @@ DAEMON="tangelo"
 PIDFILE="/var/run/$DAEMON.pid"
 export TANGELO_USE_FS=true
 export TANGELO_SKIP_AUTH=true
+export TANGELO_CFG=/var/lib/tangelo/tangelo.cfg
 
 if [ -f /etc/env.conf ]; then
     source /etc/env.conf
