@@ -94,8 +94,7 @@ pushd web_root
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 nvm use --lts
-npm install
-npm install -g react-json-view --legacy-peer-deps
+npm install --legacy-peer-deps
 npm run build
 cp -a dist/* ${TARGET_DIR}/var/www/
 
