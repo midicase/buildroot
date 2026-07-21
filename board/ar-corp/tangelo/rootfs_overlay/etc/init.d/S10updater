@@ -44,6 +44,7 @@ start() {
 		echo "Performing update."
 		rm -f ${LOGFILE} ${TEMPLOGFILE} ${FAILFILE}
 		echo "Firmware: $(basename ${UPDATE})" > ${TEMPLOGFILE}
+		[ -f ${UPDATEFOLD}/.upload_time ] && echo "Upload-Time: $(cat ${UPDATEFOLD}/.upload_time)" >> ${TEMPLOGFILE}
 		set -o pipefail
 		sh "${UPDATE}" 2>&1 | tee -a ${TEMPLOGFILE}
 		if [ $? -eq 0 ]; then 

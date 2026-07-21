@@ -30,6 +30,8 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 	# do the extract
 	7za x -p$(echo -n tangelo | sha256sum  | awk '{print $1}') /tmp/firmware.tmp -o${UPLOAD_FOLD} 
 	if [ $? -eq 0 ]; then
+		# stamp upload time now, while the clock is synced; S10updater carries it into update.log
+		date +%s > ${UPLOAD_FOLD}/.upload_time
 		echo
 		echo "Done. Can reboot."
 	else
