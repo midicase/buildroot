@@ -9,6 +9,12 @@ set -e
 AR_PRODUCT=${AR_PRODUCT:-tangelo}
 AR_HOSTNAME=${AR_HOSTNAME:-Tangelo}
 
+# The stock skeleton symlinks /var/log -> ../tmp (RAM). We mount a real
+# persistent partition (mmcblk0p4, see etc/fstab) at /var/log, so it
+# needs to be a real directory, not a symlink into tmpfs.
+rm -f ${TARGET_DIR}/var/log
+mkdir -p ${TARGET_DIR}/var/log
+
 # Generate a build date time.  Jenkins has env RELEASE_ID else generate it.
 
 if [ -z "${RELEASE_ID}" ]; then 

@@ -1,0 +1,3 @@
+# /var/log now lives on the persistent mmcblk0p4 partition (see etc/fstab).
+# Cap growth with busybox syslogd's built-in rotation: 2MB per file, 5 backups kept (~12MB max).
+SYSLOGD_ARGS="-s 2048 -b 5"
