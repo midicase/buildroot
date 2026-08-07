@@ -11,8 +11,10 @@ AR_HOSTNAME=${AR_HOSTNAME:-Tangelo}
 
 # The stock skeleton symlinks /var/log -> ../tmp (RAM). We mount a real
 # persistent partition (mmcblk0p4, see etc/fstab) at /var/log, so it
-# needs to be a real directory, not a symlink into tmpfs.
-rm -f ${TARGET_DIR}/var/log
+# needs to be a real directory, not a symlink into tmpfs. Use -rf since
+# TARGET_DIR persists across incremental builds: it may already be the
+# symlink (first build) or already the real dir (rebuilds).
+rm -rf ${TARGET_DIR}/var/log
 mkdir -p ${TARGET_DIR}/var/log
 
 # Generate a build date time.  Jenkins has env RELEASE_ID else generate it.
