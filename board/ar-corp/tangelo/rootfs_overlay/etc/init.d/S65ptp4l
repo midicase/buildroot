@@ -27,6 +27,12 @@ start() {
 		echo "PTP is not the selected time mechanism, not starting $DAEMON"
 		return 0
 	fi
+	# S49chronyd has already started by now and would fight phc2sys for
+	# CLOCK_REALTIME. arsystem does the same on the API path, which this cannot
+	# cover, just as it cannot cover this boot path. Restoring chronyd is
+	# arsystem's job: our own stop also runs at shutdown, where it would be wrong.
+	/etc/init.d/S49chronyd stop >/dev/null 2>&1
+
 	printf "Starting linuxptp daemon: "
 	start-stop-daemon -S -b -q -m -p $PIDFILE \
 		-x /usr/sbin/$DAEMON -- $PTP4L_ARGS
