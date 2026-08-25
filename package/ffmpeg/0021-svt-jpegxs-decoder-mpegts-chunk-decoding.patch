@@ -1,0 +1,290 @@
+diff --git a/libavcodec/libsvtjpegxsdec.c b/libavcodec/libsvtjpegxsdec.c
+index 7a325c4446..3d65818af0 100644
+--- a/libavcodec/libsvtjpegxsdec.c
++++ b/libavcodec/libsvtjpegxsdec.c
+@@ -43,6 +43,12 @@ typedef struct SvtJpegXsDecodeContext {
+     svt_jpeg_xs_frame_t output;
+     uint32_t decoder_initialized;
+ 
++    uint32_t chunk_decoding;
++    uint32_t frame_size;
++    uint32_t buffer_filled_len;
++    uint8_t *bitstream_buffer;
++    int64_t  chunk_pts;
++
+     int proxy_mode;
+ } SvtJpegXsDecodeContext;
+ 
+@@ -97,19 +103,89 @@ static int svt_jpegxs_dec_decode(AVCodecContext* avctx, AVFrame* picture, int* g
+     uint32_t frame_size;
+     int ret;
+ 
++    uint8_t *data = avpkt->data;
++    int size = avpkt->size;
++    uint8_t *pkt_data;
++    int pkt_size;
++    uint32_t needed = 0;
++
++    /* JPEG XS SOC marker (0xFF10) indicates start of a new frame */
++    int new_frame = (size >= 2 && data[0] == 0xFF && data[1] == 0x10);
++
++    /* Save stripped packet pointer/size for leftover calculation after decode */
++    pkt_data = data;
++    pkt_size = size;
++
++    /* If in chunk mode, accumulate data until we have a full frame */
++    if (svt_dec->chunk_decoding) {
++        /* New frame detected while holding incomplete data — discard the partial frame */
++        if (new_frame && svt_dec->buffer_filled_len > 0) {
++            av_log(avctx, AV_LOG_WARNING, "Discarding incomplete frame (%u/%u bytes)\n",
++                   svt_dec->buffer_filled_len, svt_dec->frame_size);
++            svt_dec->buffer_filled_len = 0;
++        }
++
++        /* Save PTS from the first chunk of a new frame */
++        if (svt_dec->buffer_filled_len == 0 || svt_dec->chunk_pts == AV_NOPTS_VALUE)
++            svt_dec->chunk_pts = avpkt->pts;
++
++        needed = svt_dec->frame_size - svt_dec->buffer_filled_len;
++        if ((uint32_t)pkt_size < needed) {
++            memcpy(svt_dec->bitstream_buffer + svt_dec->buffer_filled_len, pkt_data, pkt_size);
++            svt_dec->buffer_filled_len += pkt_size;
++            av_log(avctx, AV_LOG_DEBUG, "Chunk accumulate: %u/%u bytes\n",
++                   svt_dec->buffer_filled_len, svt_dec->frame_size);
++            *got_frame = 0;
++            return avpkt->size;
++        }
++        /* We have enough to complete a frame */
++        memcpy(svt_dec->bitstream_buffer + svt_dec->buffer_filled_len, pkt_data, needed);
++        data = svt_dec->bitstream_buffer;
++        size = svt_dec->frame_size;
++        /* Reset now so any error path below starts clean; the leftover
++         * block at the end will set this to the correct value on success. */
++        svt_dec->buffer_filled_len = 0;
++    }
++
++    /* data/size now point to a full frame (either direct from packet or assembled) */
+     err = svt_jpeg_xs_decoder_get_single_frame_size_with_proxy(
+-        avpkt->data, avpkt->size, &svt_dec->config, &frame_size, 1 /*quick search*/, svt_dec->decoder.proxy_mode);
++        data, size, &svt_dec->config, &frame_size, 1 /*quick search*/, svt_dec->decoder.proxy_mode);
+     if (err) {
+         av_log(avctx, AV_LOG_ERROR, "svt_jpeg_xs_decoder_get_single_frame_size_with_proxy failed, err=%d\n", err);
+         return AVERROR_EXTERNAL;
+     }
+-    if (avpkt->size < frame_size) {
+-        av_log(avctx, AV_LOG_ERROR, "Not enough data in a packet.\n");
+-        return AVERROR(EINVAL);
++    if (size < frame_size) {
++        if (!svt_dec->chunk_decoding) {
++            /* Packet is smaller than a frame — enter chunk decoding mode */
++            svt_dec->chunk_decoding = 1;
++            svt_dec->frame_size = frame_size;
++            svt_dec->bitstream_buffer = av_malloc(frame_size);
++            if (!svt_dec->bitstream_buffer)
++                return AVERROR(ENOMEM);
++            memcpy(svt_dec->bitstream_buffer, data, size);
++            svt_dec->buffer_filled_len = size;
++            svt_dec->chunk_pts = avpkt->pts;
++            av_log(avctx, AV_LOG_DEBUG, "Entering chunk mode: frame_size=%u, first chunk=%d\n",
++                   frame_size, size);
++            *got_frame = 0;
++            return avpkt->size;
++        }
++        /* Frame grew vs stored frame_size — reallocate and continue accumulating */
++        av_log(avctx, AV_LOG_DEBUG, "Frame size grew (%d -> %u), reallocating\n",
++               size, frame_size);
++        uint8_t *new_buf = av_realloc(svt_dec->bitstream_buffer, frame_size);
++        if (!new_buf)
++            return AVERROR(ENOMEM);
++        svt_dec->bitstream_buffer = new_buf;
++        svt_dec->frame_size = frame_size;
++        svt_dec->buffer_filled_len = size;
++        *got_frame = 0;
++        return avpkt->size;
+     }
+-    if (avpkt->size > frame_size) {
+-        av_log(avctx, AV_LOG_ERROR, "Single packet have data for more than one frame.\n");
+-        return AVERROR(EINVAL);
++    if (size > frame_size) {
++        av_log(avctx, AV_LOG_DEBUG, "Packet has %d extra bytes beyond frame (%u), ignoring trailing data\n",
++               size - frame_size, frame_size);
++        size = frame_size;
+     }
+ 
+     ret = set_pix_fmt(avctx, &svt_dec->config);
+@@ -118,10 +194,12 @@ static int svt_jpegxs_dec_decode(AVCodecContext* avctx, AVFrame* picture, int* g
+ 
+     if (!svt_dec->decoder_initialized || ret != avctx->pix_fmt ||
+         avctx->width != svt_dec->config.width || avctx->height != svt_dec->config.height) {
+-        if (svt_dec->decoder_initialized)
++        if (svt_dec->decoder_initialized) {
+             svt_jpeg_xs_decoder_close(&svt_dec->decoder);
++            svt_dec->decoder_initialized = 0;
++        }
+         err = svt_jpeg_xs_decoder_init(SVT_JPEGXS_API_VER_MAJOR, SVT_JPEGXS_API_VER_MINOR,
+-                                       &svt_dec->decoder, avpkt->data, avpkt->size, &svt_dec->config);
++                                       &svt_dec->decoder, data, size, &svt_dec->config);
+         if (err) {
+             av_log(avctx, AV_LOG_ERROR, "svt_jpeg_xs_decoder_init failed, err=%d\n", err);
+             return AVERROR_EXTERNAL;
+@@ -129,7 +207,13 @@ static int svt_jpegxs_dec_decode(AVCodecContext* avctx, AVFrame* picture, int* g
+ 
+         avctx->pix_fmt = ret;
+ 
+-        ret = ff_set_dimensions(avctx, svt_dec->config.width, svt_dec->config.height);
++        /* Pass full resolution to ff_set_dimensions — it applies lowres
++         * internally (coded_width=full, width=full>>lowres).  The SVT proxy
++         * mode already produced reduced config dimensions, so undo the
++         * reduction so FFmpeg's lowres shift yields the correct output size. */
++        ret = ff_set_dimensions(avctx,
++                                svt_dec->config.width  << avctx->lowres,
++                                svt_dec->config.height << avctx->lowres);
+         if (ret < 0) {
+             av_log(avctx, AV_LOG_ERROR, "ff_set_dimensions failed, err=%d\n", ret);
+             return ret;
+@@ -139,17 +223,22 @@ static int svt_jpegxs_dec_decode(AVCodecContext* avctx, AVFrame* picture, int* g
+     }
+ 
+     if (avctx->skip_frame == AVDISCARD_ALL)
+-        return 0;
++        return avpkt->size;
+ 
+-    svt_dec->input.bitstream.buffer = avpkt->data;
+-    svt_dec->input.bitstream.allocation_size = avpkt->size;
+-    svt_dec->input.bitstream.used_size = avpkt->size;
++    svt_dec->input.bitstream.buffer = data;
++    svt_dec->input.bitstream.allocation_size = size;
++    svt_dec->input.bitstream.used_size = size;
+     svt_dec->input.user_prv_ctx_ptr = avpkt;
+ 
+     ret = ff_get_buffer(avctx, picture, 0);
+     if (ret < 0)
+         return ret;
+ 
++    /* In chunk mode, override PTS with the first chunk's PTS (ff_get_buffer
++     * sets it from the completing packet, which is wrong for multi-chunk frames) */
++    if (svt_dec->chunk_decoding && svt_dec->chunk_pts != AV_NOPTS_VALUE)
++        picture->pts = svt_dec->chunk_pts;
++
+     unsigned pixel_shift = svt_dec->config.bit_depth <= 8 ? 0 : 1;
+     for (int comp = 0; comp < svt_dec->config.components_num; comp++) {
+         svt_dec->input.image.data_yuv[comp] = picture->data[comp];
+@@ -174,8 +263,56 @@ static int svt_jpegxs_dec_decode(AVCodecContext* avctx, AVFrame* picture, int* g
+         return AVERROR_EXTERNAL;
+     }
+ 
++    /* Diagnostic: verify proxy mode produced correctly-sized output */
++    if (svt_dec->decoder.proxy_mode != proxy_mode_full) {
++        av_log(avctx, AV_LOG_DEBUG,
++               "Proxy diag: mode=%d config=%ux%u avctx=%dx%d coded=%dx%d "
++               "linesize[0]=%d comp[0]=%ux%u\n",
++               svt_dec->decoder.proxy_mode,
++               svt_dec->config.width, svt_dec->config.height,
++               avctx->width, avctx->height,
++               avctx->coded_width, avctx->coded_height,
++               picture->linesize[0],
++               svt_dec->config.components[0].width,
++               svt_dec->config.components[0].height);
++    }
++
+     *got_frame = 1;
+ 
++    /* In chunk mode, carry over leftover bytes for the next frame.
++     * Two sources of leftover:
++     *   1) buffer_extra: if the actual frame consumed fewer bytes than
++     *      svt_dec->frame_size, the tail of the assembly buffer belongs
++     *      to the next frame.
++     *   2) pkt_leftover: bytes from the completing PES packet that
++     *      weren't needed to fill the assembly buffer. */
++    if (svt_dec->chunk_decoding) {
++        int buffer_extra = (int)svt_dec->frame_size - (int)frame_size;
++        int pkt_leftover = pkt_size - (int)needed;
++        int total = FFMAX(buffer_extra, 0) + FFMAX(pkt_leftover, 0);
++
++        if (total > (int)frame_size)
++            total = frame_size;
++
++        if (buffer_extra > 0)
++            memmove(svt_dec->bitstream_buffer,
++                    svt_dec->bitstream_buffer + frame_size, buffer_extra);
++
++        int pkt_copy = total - FFMAX(buffer_extra, 0);
++        if (pkt_copy > 0)
++            memcpy(svt_dec->bitstream_buffer + FFMAX(buffer_extra, 0),
++                   pkt_data + needed, pkt_copy);
++
++        svt_dec->buffer_filled_len = total;
++        svt_dec->frame_size = frame_size;
++
++        /* Leftovers start the next frame.  The completing packet's PTS
++         * is the best estimate we have, since the next packets won't
++         * trigger the buffer_filled_len == 0 PTS capture path. */
++        if (total > 0)
++            svt_dec->chunk_pts = avpkt->pts;
++    }
++
+     return avpkt->size;
+ }
+ 
+@@ -183,7 +320,9 @@ static av_cold int svt_jpegxs_dec_free(AVCodecContext* avctx)
+ {
+     SvtJpegXsDecodeContext* svt_dec = avctx->priv_data;
+ 
+-    svt_jpeg_xs_decoder_close(&svt_dec->decoder);
++    if (svt_dec->decoder_initialized)
++        svt_jpeg_xs_decoder_close(&svt_dec->decoder);
++    av_freep(&svt_dec->bitstream_buffer);
+ 
+     return 0;
+ }
+diff --git a/libavformat/mpegts.c b/libavformat/mpegts.c
+index a9094ab55b..ca3d827a3d 100644
+--- a/libavformat/mpegts.c
++++ b/libavformat/mpegts.c
+@@ -941,8 +941,6 @@ static int mpegts_set_stream_info(AVStream *st, PESContext *pes,
+     mpegts_find_stream_type(st, pes->stream_type, ISO_types);
+     if (pes->stream_type == STREAM_TYPE_AUDIO_MPEG2 || pes->stream_type == STREAM_TYPE_AUDIO_AAC)
+         sti->request_probe = 50;
+-    if (pes->stream_type == STREAM_TYPE_PRIVATE_DATA)
+-        sti->request_probe = AVPROBE_SCORE_STREAM_RETRY;
+     if ((prog_reg_desc == AV_RL32("HDMV") ||
+          prog_reg_desc == AV_RL32("HDPR")) &&
+         st->codecpar->codec_id == AV_CODEC_ID_NONE) {
+@@ -1030,20 +1028,18 @@ static int new_pes_packet(PESContext *pes, AVPacket *pkt)
+         pes->flags |= AV_PKT_FLAG_CORRUPT;
+     }
+ 
+-    // JPEG-XS PES payload
++    // JPEG-XS PES payload: strip the ISOBMFF jxes access-unit header
++    // so the downstream parser sees raw codestream starting with SOC.
+     if (pes->stream_id == 0xbd && pes->stream_type == 0x32 &&
+         pkt->size >= 8 && memcmp(pkt->data + 4, "jxes", 4) == 0)
+     {
+-        uint32_t header_size = AV_RB32(pkt->data);
+-        if (header_size > pkt->size) {
+-            av_log(pes->stream, AV_LOG_WARNING,
+-                   "Invalid JPEG-XS header size %"PRIu32" > packet size %d\n",
+-                   header_size, pkt->size);
+-            pes->flags |= AV_PKT_FLAG_CORRUPT;
+-            return AVERROR_INVALIDDATA;
++        for (int i = 8; i <= pkt->size - 2; i++) {
++            if (pkt->data[i] == 0xFF && pkt->data[i + 1] == 0x10) {
++                pkt->data += i;
++                pkt->size -= i;
++                break;
++            }
+         }
+-        pkt->data += header_size;
+-        pkt->size -= header_size;
+     }
+ 
+     memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
+@@ -2623,7 +2619,7 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
+         if (!st)
+             goto out;
+ 
+-        if (pes && pes->stream_type != stream_type)
++        if (pes && !pes->stream_type)
+             mpegts_set_stream_info(st, pes, stream_type, prog_reg_desc);
+ 
+         add_pid_to_program(prg, pid);

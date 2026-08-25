@@ -1,0 +1,42 @@
+diff --git a/libavformat/dashdec.c b/libavformat/dashdec.c
+index 9a2ea781492..dab9052846b 100644
+--- a/libavformat/dashdec.c
++++ b/libavformat/dashdec.c
+@@ -135,6 +135,7 @@ typedef struct DASHContext {
+     uint64_t media_presentation_duration;
+     uint64_t suggested_presentation_delay;
+     uint64_t availability_start_time;
++    int availability_start_time_set;
+     uint64_t availability_end_time;
+     uint64_t publish_time;
+     uint64_t minimum_update_period;
+@@ -1307,6 +1308,7 @@ static int parse_manifest(AVFormatContext *s, const char *url, AVIOContext *in)
+ 
+             if (!av_strcasecmp(attr->name, "availabilityStartTime")) {
+                 c->availability_start_time = get_utc_date_time_insec(s, val);
++                c->availability_start_time_set = 1;
+                 av_log(s, AV_LOG_TRACE, "c->availability_start_time = [%"PRId64"]\n", c->availability_start_time);
+             } else if (!av_strcasecmp(attr->name, "availabilityEndTime")) {
+                 c->availability_end_time = get_utc_date_time_insec(s, val);
+@@ -1425,7 +1427,7 @@ static int64_t calc_cur_seg_no(AVFormatContext *s, struct representation *pls)
+             av_log(s, AV_LOG_TRACE, "in fragment_duration mode fragment_timescale = %"PRId64", presentation_timeoffset = %"PRId64"\n", pls->fragment_timescale, pls->presentation_timeoffset);
+             if (pls->presentation_timeoffset) {
+                 num = pls->first_seq_no + (((get_current_time_in_sec() - c->availability_start_time) * pls->fragment_timescale)-pls->presentation_timeoffset) / pls->fragment_duration - c->min_buffer_time;
+-            } else if (c->publish_time > 0 && !c->availability_start_time) {
++            } else if (c->publish_time > 0 && !c->availability_start_time_set) {
+                 if (c->min_buffer_time) {
+                     num = pls->first_seq_no + (((c->publish_time + pls->fragment_duration) - c->suggested_presentation_delay) * pls->fragment_timescale) / pls->fragment_duration - c->min_buffer_time;
+                 } else {
+@@ -1433,6 +1435,12 @@ static int64_t calc_cur_seg_no(AVFormatContext *s, struct representation *pls)
+                 }
+             } else {
+                 num = pls->first_seq_no + (((get_current_time_in_sec() - c->availability_start_time) - c->suggested_presentation_delay) * pls->fragment_timescale) / pls->fragment_duration;
++                /* That is the segment being produced right now, which is the same value
++                 * calc_max_seg_no() returns and is not published yet: origins answer 404 for
++                 * it, and the BBC test card renders a "SEGMENT REQUESTED EARLY" caption over
++                 * the picture. Join at the newest complete segment instead. */
++                if (num > pls->first_seq_no)
++                    num--;
+             }
+         }
+     } else {

@@ -4,9 +4,11 @@
 #
 ################################################################################
 
-FFMPEG_VERSION = 6.1.2
-FFMPEG_SOURCE = ffmpeg-$(FFMPEG_VERSION).tar.xz
-FFMPEG_SITE = https://ffmpeg.org/releases
+# Pinned to the same commit as the rumo repo's FFmpeg submodule, so the buildroot
+# image and the native build are the same FFmpeg. Move both together.
+FFMPEG_VERSION = 74cfcd1c6912f3cdd74d0ba58c316b04a11691f0
+FFMPEG_SITE = https://git.ffmpeg.org/ffmpeg.git
+FFMPEG_SITE_METHOD = git
 FFMPEG_INSTALL_STAGING = YES
 
 FFMPEG_LICENSE = LGPL-2.1+, libjpeg license
@@ -32,7 +34,6 @@ FFMPEG_CONF_OPTS = \
 	--disable-gray \
 	--enable-swscale-alpha \
 	--disable-small \
-	--disable-crystalhd \
 	--disable-dxva2 \
 	--enable-runtime-cpudetect \
 	--disable-hardcoded-tables \
@@ -116,11 +117,9 @@ else
 FFMPEG_CONF_OPTS += --disable-libxcb
 endif
 
-ifeq ($(BR2_PACKAGE_FFMPEG_POSTPROC),y)
-FFMPEG_CONF_OPTS += --enable-postproc
-else
-FFMPEG_CONF_OPTS += --disable-postproc
-endif
+# libpostproc was removed from FFmpeg upstream, and its configure rejects unknown options
+# outright, so neither --enable-postproc nor --disable-postproc can be passed any more.
+# BR2_PACKAGE_FFMPEG_POSTPROC is left in Config.in but no longer does anything.
 
 ifeq ($(BR2_PACKAGE_FFMPEG_SWSCALE),y)
 FFMPEG_CONF_OPTS += --enable-swscale

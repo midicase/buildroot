@@ -1,0 +1,73 @@
+Wait at the DASH live edge instead of skipping past it
+
+When a fragment will not open on a dynamic stream the usual reason is that it does not
+exist yet: the client has reached the live edge, and the origin answers 404 -- or 425 Too
+Early where it is strict, as the DASH-IF livesim2 conformance server is. dashdec responded
+by incrementing cur_seq_no and retrying immediately, which walks further into the future
+and cannot succeed either, so the demuxer spun through segment numbers as fast as the
+network allowed and never recovered.
+
+Against livesim2 that produced no output at all: 218 fragments skipped in 90 seconds and
+zero bytes written. With this change the same test yields 60.2 seconds of continuous
+content in 60 seconds of wall clock with no fragments skipped -- it now waits for the
+segment it actually wants, in slices, checking the interrupt callback so a quit or a
+config change is not held for the whole wait. A segment late enough to exhaust the retry
+budget is still skipped, so a genuinely dropped segment does not stall the stream.
+
+diff --git a/libavformat/dashdec.c b/libavformat/dashdec.c
+--- a/libavformat/dashdec.c
++++ b/libavformat/dashdec.c
+@@ -118,8 +118,14 @@
+     uint32_t init_sec_buf_read_offset;
+     int64_t cur_timestamp;
+     int is_restart_needed;
++    int edge_retries;           /* consecutive live-edge waits for the current segment */
+ };
+ 
++/* How many times a live fragment may be waited for before it is treated as genuinely missing and
++ * skipped. At a quarter of a segment per wait this is a couple of segment durations, which covers
++ * an origin publishing a little late without stalling forever on one that dropped a segment. */
++#define DASH_EDGE_MAX_RETRIES 12
++
+ typedef struct DASHContext {
+     const AVClass *class;
+     char *base_url;
+@@ -1833,10 +1839,38 @@
+                 ret = AVERROR_EXIT;
+                 goto end;
+             }
++            /* On a dynamic stream the ordinary reason a fragment will not open is that it does
++             * not exist yet: we have caught up with the live edge and the origin answers 404, or
++             * 425 Too Early where it is strict about it. Advancing cur_seq_no there is exactly
++             * wrong -- it walks further into the future, which cannot succeed either, so the
++             * demuxer spins through segment numbers as fast as the network allows and never
++             * recovers. Wait for the segment we actually want to be published instead, and only
++             * fall through to skipping it once it is late enough to be genuinely missing.
++             */
++            if (c->is_live && v->fragment_duration > 0 && v->fragment_timescale > 0 &&
++                v->edge_retries < DASH_EDGE_MAX_RETRIES) {
++                int64_t seg_us  = av_rescale(v->fragment_duration, 1000000, v->fragment_timescale);
++                int64_t wait_us = av_clip64(seg_us / 4, 50000, 500000);
++                int64_t waited = 0;
++                v->edge_retries++;
++                /* Slept in slices so a quit or a config change is not held for the whole wait;
++                 * rumo drives that through the interrupt callback. */
++                while (waited < wait_us) {
++                    if (ff_check_interrupt(c->interrupt_callback)) {
++                        ret = AVERROR_EXIT;
++                        goto end;
++                    }
++                    av_usleep(FFMIN(50000, wait_us - waited));
++                    waited += FFMIN(50000, wait_us - waited);
++                }
++                goto restart;
++            }
+             av_log(v->parent, AV_LOG_WARNING, "Failed to open fragment of playlist\n");
++            v->edge_retries = 0;
+             v->cur_seq_no++;
+             goto restart;
+         }
++        v->edge_retries = 0;
+     }
+ 
+     if (v->init_sec_buf_read_offset < v->init_sec_data_len) {
