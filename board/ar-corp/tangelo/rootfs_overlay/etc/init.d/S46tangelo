@@ -10,8 +10,19 @@ if [ -f /etc/env.conf ]; then
     source /etc/env.conf
 fi
 
+# Hold the eth0 IRQ on CPU0. tangelo's DMA worker pins itself to the highest
+# core (dma.cpp, pin_worker_off_irq_cpu) so the two never share: colliding them
+# costs 27% of the small-packet drain rate. Best effort -- never blocks start.
+pin_eth_irq() {
+	[ "$(nproc 2>/dev/null || echo 1)" -gt 1 ] || return 0
+	irq=$(awk -F: '/eth0/ {gsub(/ /,"",$1); print $1; exit}' /proc/interrupts)
+	[ -n "$irq" ] && [ -w "/proc/irq/$irq/smp_affinity" ] || return 0
+	echo 1 > "/proc/irq/$irq/smp_affinity" 2>/dev/null
+}
+
 start() {
 	printf 'Starting %s: ' "$DAEMON"
+	pin_eth_irq
 	# auto core dump
 	ulimit -c unlimited
 	start-stop-daemon -S -b -q -m -p "$PIDFILE" --exec "/usr/sbin/$DAEMON" 
