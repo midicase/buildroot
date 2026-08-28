@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# Regenerate /etc from the persisted arsystem config.
+#
+# Runs before S40network on purpose: ifupdown reads /etc/network/interfaces at
+# S40, so applying the config from the arsystem daemon (S45) would either miss
+# the current boot or force a network restart on every boot. Everything else it
+# writes (resolv.conf, chrony.conf, localtime, time_mechanism) is consumed
+# later still, by S49chronyd and S65ptp4l.
+#
+# A missing or corrupt config leaves the rootfs defaults alone; either way this
+# must never fail the boot.
+
+DAEMON="/usr/sbin/arsystem"
+
+start() {
+	[ -x "$DAEMON" ] || return 0
+	echo "Applying saved config:"
+	# stdout dropped, stderr kept: arsystem opens syslog with LOG_PERROR, so its
+	# few applyCfg lines land on the console -- the only diagnostic available
+	# this early if a boot goes wrong.
+	"$DAEMON" --apply-config >/dev/null
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop|restart|reload)
+	;;
+  *)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+esac
+
+exit 0
