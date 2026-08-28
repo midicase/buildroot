@@ -15,6 +15,14 @@ DAEMON="/usr/sbin/arsystem"
 
 start() {
 	[ -x "$DAEMON" ] || return 0
+	# An arsystem predating --apply-config ignores the flag and falls through into
+	# its daemon loop, which would hang the boot here, before networking, with no
+	# way in. Can't happen from a clean image, but a hand-deployed binary can do
+	# it. Skip unless the binary actually knows the flag.
+	grep -q -- "--apply-config" "$DAEMON" 2>/dev/null || {
+		echo "arsystem has no --apply-config, skipping"
+		return 0
+	}
 	echo "Applying saved config:"
 	# stdout dropped, stderr kept: arsystem opens syslog with LOG_PERROR, so its
 	# few applyCfg lines land on the console -- the only diagnostic available
