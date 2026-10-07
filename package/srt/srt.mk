@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-SRT_VERSION = v1.5.6
+SRT_VERSION = v1.5.7
 SRT_SITE = https://github.com/Haivision/srt/tarball/$(SRT_VERSION)
 SRT_INSTALL_STAGING = YES
 SRT_LICENSE = MPLv2.0
