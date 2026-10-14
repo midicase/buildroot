@@ -15,3 +15,4 @@
 *.pyc
 /.project
 /.vscode/settings.json
+/.claude/
