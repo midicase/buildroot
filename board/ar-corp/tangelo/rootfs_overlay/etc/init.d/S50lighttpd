@@ -9,21 +9,16 @@ CONF_FILE="/etc/$NAME/$NAME.conf"
 
 [ -r /etc/default/$NAME ] && . /etc/default/$NAME
 
-# /var/log now persists on mmcblk0p4 (root:root 755) instead of the old
-# world-writable tmpfs, so lighttpd (running as www-data) can no longer
-# create its own log files there. Pre-create/own them per the ownership
-# already declared in package/lighttpd/lighttpd_tmpfiles.conf -- that
-# file is a systemd-tmpfiles.d spec that never runs under busybox init.
-precreate_logs() {
-	for f in lighttpd-error.log lighttpd-access.log; do
-		[ -e "/var/log/$f" ] || touch "/var/log/$f"
-		chown www-data:www-data "/var/log/$f"
-		chmod 0640 "/var/log/$f"
-	done
+# lighttpd now logs errors to syslogd and the access log is disabled (see
+# conf-enabled/syslog.conf and conf.d/access_log.conf). Older images wrote
+# both to files on the persistent /var/log (mmcblk0p4) with no rotation,
+# and the access log can fill the partition, so remove any leftovers.
+remove_old_logs() {
+	rm -f /var/log/lighttpd-error.log /var/log/lighttpd-access.log
 }
 
 start() {
-	precreate_logs
+	remove_old_logs
 	printf "Starting lighttpd: "
 	start-stop-daemon -S -q -p $PID_FILE --exec $DAEMON -- -f $CONF_FILE
 	echo "OK"
