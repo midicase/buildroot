@@ -17,6 +17,12 @@ AR_HOSTNAME=${AR_HOSTNAME:-Tangelo}
 rm -rf ${TARGET_DIR}/var/log
 mkdir -p ${TARGET_DIR}/var/log
 
+# arsystem disables sshd by deleting /etc/init.d/S50dropbear (rcS then skips
+# it) and enables it by copying it back from here. Kept outside init.d proper
+# so rcS never runs it. Shipped enabled.
+mkdir -p ${TARGET_DIR}/etc/init.d/user
+cp -a ${TARGET_DIR}/etc/init.d/S50dropbear ${TARGET_DIR}/etc/init.d/user/S50dropbear
+
 # Generate a build date time.  Jenkins has env RELEASE_ID else generate it.
 
 if [ -z "${RELEASE_ID}" ]; then 
