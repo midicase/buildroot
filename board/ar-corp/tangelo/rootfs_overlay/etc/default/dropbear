@@ -1,0 +1,4 @@
+# Read by /etc/init.d/S50dropbear, which appends -R.
+# IPv4 only: without an address dropbear also listens on :: and is reachable
+# over the IPv6 link-local address the kernel always assigns (STIG).
+DROPBEAR_ARGS="-p 0.0.0.0:22"
