@@ -2,6 +2,16 @@
 
 UPLOAD_FOLD=/var/www/uploads
 
+# A cross-site Origin is refused (CSRF).
+if [ -n "$HTTP_ORIGIN" ] && [ "${HTTP_ORIGIN#*://}" != "$HTTP_HOST" ]; then
+	logger -t upload.cgi "refused origin $HTTP_ORIGIN"
+	echo "Status: 403 Forbidden"
+	echo "Content-Type: text/plain"
+	echo
+	echo "Refused"
+	exit 0
+fi
+
 if [ "$REQUEST_METHOD" = "POST" ]; then
 	read boundary
 	read disposition
