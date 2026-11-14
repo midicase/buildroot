@@ -2,3 +2,7 @@
 # Cap growth with busybox syslogd's built-in rotation: 2MB per file, 5 backups kept (~12MB max).
 # -t: stamp with syslogd's own clock so timestamps follow /etc/localtime live.
 SYSLOGD_ARGS="-t -s 2048 -b 5"
+# Logs can hold config detail; not world-readable. Sourced by S01syslogd, so
+# the umask covers files syslogd creates on rotation too.
+umask 027
+chmod 0640 /var/log/messages* 2>/dev/null
