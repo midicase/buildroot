@@ -114,6 +114,8 @@ case "$ACTION" in
 			search_list=$domain
 		fi
 
+		# option 119 is not sanitized by udhcpc; a newline would add resolv.conf lines
+		search_list=$(printf '%s' "$search_list" | tr -cd 'A-Za-z0-9. -')
 		[ -n "$search_list" ] &&
 			echo "search $search_list # $interface" >> $RESOLV_CONF
 
