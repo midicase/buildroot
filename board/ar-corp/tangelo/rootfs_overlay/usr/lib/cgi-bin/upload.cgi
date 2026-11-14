@@ -21,15 +21,18 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 	# it is still reading the request body, so they would all land at once when
 	# the upload finishes. The extract below is streamed and can tick.
 
-	# read out file name
-	eval `echo $disposition | tr -d '\r' | tr -d '\n' | cut -f4 -d " "`
-	cat > /tmp/firmware.tmp
+	# The client filename is not used: it is attacker-controlled.
+	FW_TMP=$(mktemp /tmp/firmware.XXXXXX) || exit 1
+	CUT_TMP=$(mktemp /tmp/cut.XXXXXX) || exit 1
+	EXTRACT_LOG=$(mktemp /tmp/extract.XXXXXX) || exit 1
+	trap 'rm -f "$FW_TMP" "$CUT_TMP" "$EXTRACT_LOG"' EXIT
+	cat > "$FW_TMP"
 
 	# remove content-type from multipart/form-data body request 
 	for (( i = 0; i <= 5; i++)) 
 	do
-		sed '$d' /tmp/firmware.tmp > /tmp/cut.tmp
-		cp /tmp/cut.tmp /tmp/firmware.tmp
+		sed '$d' "$FW_TMP" > "$CUT_TMP"
+		cp "$CUT_TMP" "$FW_TMP"
 	done
 	
 	# clear the directory
@@ -37,7 +40,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 	
 	# Extract in the background and tick once a second. The extract is the slow
 	# step, and without this the window sits silent long enough to look hung.
-	7za x -p$(echo -n tangelo | sha256sum  | awk '{print $1}') /tmp/firmware.tmp -o${UPLOAD_FOLD} > /tmp/extract.log 2>&1 &
+	7za x -p$(echo -n tangelo | sha256sum  | awk '{print $1}') "$FW_TMP" -o${UPLOAD_FOLD} > "$EXTRACT_LOG" 2>&1 &
 	extract_pid=$!
 	printf "Extracting"
 	while kill -0 ${extract_pid} 2>/dev/null; do
@@ -47,7 +50,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 	wait ${extract_pid}
 	extract_rc=$?
 	echo
-	cat /tmp/extract.log
+	cat "$EXTRACT_LOG"
 
 	if [ ${extract_rc} -eq 0 ]; then
 		# stamp upload time now, while the clock is synced; S10updater carries it into update.log
