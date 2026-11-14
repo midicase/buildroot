@@ -1,0 +1,2 @@
+# Turn sshd off at 03:00 local time; runs every 15 min to cover :30/:45 zones.
+*/15 * * * * /usr/sbin/arsystem --sshd-autooff

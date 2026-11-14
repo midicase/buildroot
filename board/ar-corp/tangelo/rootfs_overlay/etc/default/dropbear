@@ -1,4 +1,5 @@
 # Read by /etc/init.d/S50dropbear, which appends -R.
 # IPv4 only: without an address dropbear also listens on :: and is reachable
 # over the IPv6 link-local address the kernel always assigns (STIG).
-DROPBEAR_ARGS="-p 0.0.0.0:22"
+# -I: drop idle sessions after 10 min; -T: 3 password tries per connection.
+DROPBEAR_ARGS="-p 0.0.0.0:22 -I 600 -T 3"
