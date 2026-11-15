@@ -1,0 +1,15 @@
+#!/bin/sh
+# core_pattern pipe handler ($1=exe $2=pid $3=time, core on stdin). Keeps the
+# newest 3 cores in /var/log/cores (root-only: cores can hold SRT keys), each
+# capped at 256 MB, and drops a core rather than take /var/log below 1 GB free.
+DIR=/var/log/cores
+mkdir -p "$DIR" && chmod 700 "$DIR" || exit 0
+ls -1t "$DIR"/core.* 2>/dev/null | tail -n +3 | xargs -r rm -f
+free_kb=$(df -k /var/log | awk 'NR==2 {print $4}')
+if [ "${free_kb:-0}" -lt 1048576 ]; then
+	logger -t core-save "dropped core of $1 pid $2: /var/log has under 1 GB free"
+	exit 0
+fi
+umask 077
+head -c 268435456 > "$DIR/core.$1.$2.$3"
+logger -t core-save "saved $DIR/core.$1.$2.$3 ($(wc -c < "$DIR/core.$1.$2.$3") bytes)"
