@@ -45,6 +45,19 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 		cp "$CUT_TMP" "$FW_TMP"
 	done
 	
+	# Release archives are always password-encrypted (make_release.sh). Refuse
+	# one with any unencrypted file, before the staging folder is touched.
+	if ! 7za l -slt -p$(echo -n tangelo | sha256sum  | awk '{print $1}') "$FW_TMP" 2>/dev/null | awk '
+		/^----------/ { body = 1; next }
+		body && /^Path = / { n++; folder = 0 }
+		body && /^Folder = \+/ { folder = 1 }
+		body && /^Encrypted = / { if (!folder && $3 != "+") bad = 1 }
+		END { exit (n == 0 || bad) }'; then
+		logger -t upload.cgi "refused archive without password encryption"
+		echo "Incompatible file: not an encrypted release archive."
+		exit 406
+	fi
+
 	# clear the directory
 	rm -rf ${UPLOAD_FOLD}/*
 	
@@ -68,6 +81,8 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 		echo
 		echo "Done. Can reboot."
 	else
+		# 7za leaves partial files behind (e.g. on a wrong password); S10updater must not see them.
+		rm -rf ${UPLOAD_FOLD}/*
 		echo
 		echo "Incompatible file."
 		exit 406
