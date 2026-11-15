@@ -17,8 +17,18 @@ remove_old_logs() {
 	rm -f /var/log/lighttpd-error.log /var/log/lighttpd-access.log
 }
 
+# HTTPS key and certificate: arsystem makes a self-signed pair if there is
+# none (see etc/lighttpd/conf-enabled/tls.conf). Its failure leaves HTTP only.
+make_tls_cert() {
+	/usr/sbin/arsystem --tls-init >/dev/null 2>&1 || logger -t lighttpd "no TLS certificate; HTTPS off"
+}
+
 start() {
 	remove_old_logs
+	make_tls_cert
+	# include_shell returns to the start directory on every graceful restart,
+	# as www-data; a shell left in /root would make that fail and stop lighttpd.
+	cd /
 	printf "Starting lighttpd: "
 	start-stop-daemon -S -q -p $PID_FILE --exec $DAEMON -- -f $CONF_FILE
 	echo "OK"
