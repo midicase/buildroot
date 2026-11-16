@@ -47,10 +47,12 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 	
 	# Release archives are always password-encrypted (make_release.sh). Refuse
 	# one with any unencrypted file, before the staging folder is touched.
-	if ! 7za l -slt -p$(echo -n tangelo | sha256sum  | awk '{print $1}') "$FW_TMP" 2>/dev/null | awk '
+	# Directories are never encrypted: zip marks them "Folder = +", 7z only
+	# by a leading D in "Attributes".
+	if ! 7zz l -slt -p$(echo -n tangelo | sha256sum  | awk '{print $1}') "$FW_TMP" 2>/dev/null | awk '
 		/^----------/ { body = 1; next }
 		body && /^Path = / { n++; folder = 0 }
-		body && /^Folder = \+/ { folder = 1 }
+		body && (/^Folder = \+/ || /^Attributes = D/) { folder = 1 }
 		body && /^Encrypted = / { if (!folder && $3 != "+") bad = 1 }
 		END { exit (n == 0 || bad) }'; then
 		logger -t upload.cgi "refused archive without password encryption"
@@ -63,7 +65,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 	
 	# Extract in the background and tick once a second. The extract is the slow
 	# step, and without this the window sits silent long enough to look hung.
-	7za x -p$(echo -n tangelo | sha256sum  | awk '{print $1}') "$FW_TMP" -o${UPLOAD_FOLD} > "$EXTRACT_LOG" 2>&1 &
+	7zz x -p$(echo -n tangelo | sha256sum  | awk '{print $1}') "$FW_TMP" -o${UPLOAD_FOLD} > "$EXTRACT_LOG" 2>&1 &
 	extract_pid=$!
 	printf "Extracting"
 	while kill -0 ${extract_pid} 2>/dev/null; do
@@ -81,7 +83,7 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
 		echo
 		echo "Done. Can reboot."
 	else
-		# 7za leaves partial files behind (e.g. on a wrong password); S10updater must not see them.
+		# 7zz leaves partial files behind (e.g. on a wrong password); S10updater must not see them.
 		rm -rf ${UPLOAD_FOLD}/*
 		echo
 		echo "Incompatible file."
