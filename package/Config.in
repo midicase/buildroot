@@ -67,6 +67,7 @@ menu "Audio and video applications"
 endmenu
 
 menu "Compressors and decompressors"
+	source "package/7zip/Config.in"
 	source "package/brotli/Config.in"
 	source "package/bzip2/Config.in"
 	source "package/gzip/Config.in"
