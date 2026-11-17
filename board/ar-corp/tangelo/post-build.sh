@@ -89,9 +89,7 @@ autoheader
 automake --add-missing -cf --foreign
 ./configure ${CONFIGURE_FLAGS}
 make -j$((`nproc`+1))
-install -D -m 0755 arsystem ${TARGET_DIR}/usr/sbin/arsystem
-install -D -m 0755 prov_board_info ${TARGET_DIR}/usr/sbin/prov_board_info
-install -D -m 0755 provision_wizard.sh ${TARGET_DIR}/usr/sbin/provision_wizard.sh
+make install DESTDIR=${TARGET_DIR}
 
 popd
 
@@ -104,7 +102,7 @@ autoheader
 automake --add-missing -cf --foreign
 ./configure ${CONFIGURE_FLAGS}
 make -j$((`nproc`+1))
-install -D -m 0755 tangelo ${TARGET_DIR}/usr/sbin/tangelo
+make install DESTDIR=${TARGET_DIR}
 
 pushd web_root
 
