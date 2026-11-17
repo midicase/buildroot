@@ -14,7 +14,7 @@ echo "Content-Type: text/plain"
 echo ""
 BODY='{"cmd":"reboot"}'
 if printf 'PUT /api/system/command HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s' "${#BODY}" "$BODY" \
-    | nc -w 5 127.0.0.1 80 2>/dev/null | grep -q '"status" *: *"200"'; then
+    | timeout 5 nc 127.0.0.1 80 2>/dev/null | grep -q '"status" *: *"200"'; then
   echo "Reboot... Please wait..."
 else
   echo "Reboot failed: the system service did not respond."
