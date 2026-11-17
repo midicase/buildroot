@@ -12,9 +12,15 @@ fi
 
 echo "Content-Type: text/plain"
 echo ""
+# Client-only nc has no -w; a busybox without timeout still has nc -w.
+if command -v timeout >/dev/null 2>&1; then
+  send() { timeout 5 nc 127.0.0.1 80; }
+else
+  send() { nc -w 5 127.0.0.1 80; }
+fi
 BODY='{"cmd":"reboot"}'
 if printf 'PUT /api/system/command HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s' "${#BODY}" "$BODY" \
-    | timeout 5 nc 127.0.0.1 80 2>/dev/null | grep -q '"status" *: *"200"'; then
+    | send 2>/dev/null | grep -q '"status" *: *"200"'; then
   echo "Reboot... Please wait..."
 else
   echo "Reboot failed: the system service did not respond."
