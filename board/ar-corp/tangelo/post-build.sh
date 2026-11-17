@@ -36,6 +36,7 @@ echo "${RELEASE_ID}" > ${TARGET_DIR}/etc/VERSION
 cat <<EOF > ${TARGET_DIR}/etc/env.conf
 export PRODUCT=${AR_PRODUCT}
 export DEFAULT_HOSTNAME=${AR_HOSTNAME}
+export TANGELO_ENABLE_AUTH=1
 EOF
 
 
